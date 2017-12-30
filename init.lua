@@ -4,6 +4,7 @@ local M = {}
 local weakmt= {__mode='k'}
 M.docset = setmetatable({}, weakmt)
 
+--TODO: is this too much implicitness?
 function M.doc(...)
 	local n = select('#', ...)
 	local val, doc, name
