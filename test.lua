@@ -1,25 +1,14 @@
 local manners = require 'manners'
-local doc = manners.doc
-local link = manners.link
-local deflink = manners.deflink
 
-
-local M = doc({},[[
-Example for the manners documentation library for Lua]])
-
-M.fid = doc(
-   function(...)
-      return ...
-   end,[[
-The identity function.]])
-
-deflink(M,'fnull',doc(function()end,[[
-The empty function]]))
-
-deflink(M,'util',doc({},[[
-Utilities submodule]]))
-
-deflink(M.util,'primes',doc({doc(1,"1 is a prime, right?")},[[
-All the primes ever, trust me, I checked]]))
-
-return M
+local v = {}
+assert(v==
+	manners.longdoc(v)
+	:name 'example'
+	:description[[
+	This is a long description.
+	Spanning multiple lines.
+	Check out manners!]]
+	:see(manners)--same as .link(manners)
+	:see(some,other,things)--this translates to multiple .link calls
+	:done()--returns `v`
+)
