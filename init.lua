@@ -1,33 +1,15 @@
 local M = {}
 
+local mname = ... or 'manners'
+
 --weak table so we don't leak memory
 local weakmt= {__mode='k'}
-M.docset = setmetatable({}, weakmt)
 
---TODO: is this too much implicitness?
-function M.doc(...)
-	local n = select('#', ...)
-	local val, doc, name
-	if n == 1 then
-		val = ...
-	elseif n == 2 then
-		doc, val = ...
-	elseif n => 3 then
-		name, doc, val = ...
-	end
-	--let it error on nil key
-	M.docset[val]={doc=doc, name=name}
-	return val
+local function mkweak(t)
+	return setmetatable(t or {}, weakmt)
 end
 
-local doc = M.doc
-
-M.doc('manners',[[
-A super simple, super dumb, super dynamic documentation library for Lua, inspired by Python's help.
-bugs:
-FIXME: resolve doc conflicts? Allow users to document things interactively easily.
-
-TODO: Documentation generation.]], M)
+M.docset = mkweak()
 
 local function defget(t,k,v)
 	local r = t[k]
@@ -38,65 +20,97 @@ local function defget(t,k,v)
 	return r
 end
 
-function M.link(a,...)
-	local al2 = defget(assert(M.docset[a],"Nothing to link from."),'links_to')
-	local alf = defget(M.docset[a],'linked_from')
-	for _, b in ipairs {...} do
-		local bl2 = defget(assert(M.docset[b],"Nothing to link to"),'links_to')
-		local blf = defget(M.docset[b],'linked_from')
-		al2[b] = true
-		bl2[a] = true
-		alf[b] = true
-		blf[a] = true
+--TODO: is this too much implicitness?
+function M.doc(...)
+	local n = select('#', ...)
+	local val, doc, name
+	if n == 1 then
+		val = ...
+	elseif n == 2 then
+		doc, val = ...
+	elseif n >= 3 then
+		name, doc, val = ...
 	end
-	return a
+	--let it error on nil key
+	local docs = defget(M.docset, val, {})
+	docs.name = name
+	docs.doc = doc
+	
+	return val
 end
 
-local link = M.link
+local doc = M.doc
 
-link(M,doc(link,[[
-a = manners.link(a,...)
-Create links between `a` and the things in `...`. Returns `a` unchanged.]]))
+M.doc(mname,
+[[A super simple, super dumb, super dynamic documentation library for Lua, inspired by Python's help.]], M)
 
-link(M,
-	doc(
-		[[
-doc]],
-		[[
-val = doc(name, docstr, val)
-val = doc(docstr, val)
-val = doc(val)
+function M.link(a, b)
+	local a_doc = defget(M.docset, a, {})
+	local b_doc = defget(M.docset, b, {})
+	
+	local a_links_to = defget(a_doc, 'links_to', mkweak())
+	local b_linked_from = defget(b_doc, 'linked_from', mkweak())
+	
+	a_links_to[b] = true
+	b_linked_from[a] = true
+end
 
-Adds documentation to `val`. `name` is an optional but recommended descriptor.
-`docstr` is also optional, so that it's possible to just register an object in the `docset` without any documentation data. This could be useful for adding the documentation later.]],
-		M.doc
-	)
-)
-link(doc, M.docset)
+function M.define(parent,name,doc,val)
+	M.doc(name,doc,val)
+	parent[name]=val
+	M.link(parent, val)
+	return val
+end
 
-deflink(M,'help',
-		function(v)
-			return M.docset[v].doc
-		end,[[
-hlp = manners.help(v)
-Get help regarding a value `v`. Returns whatever is stored in `manners.docset[v].doc`.]])
+M.define(
+M,'longdoc',[=[
+longdoc_object = %s.longdoc(v)
+Returns a longdoc object.
+example:
+v=%s.longdoc(math.pi)
+:name 'pi'
+:description [[
+The mathematical constant `pi`.]]
+:see(math)
+:done()]=],
+function (v)
+	return setmetatable({value=v}, M.longdoc_mt)
+end)
 
-deflink(M,'gethelp',
-		function(v)
-			return M.docset[v]
-		end,[[
-hlpobj = manners.gethelp(v)
-Get the help object stored at `manners.docset[v]`.]])
 
-link(M, doc(
-		[[
-docset]],[[
-This table stores the documentation data.
-manners.docset[k]={
-  doc = doc_object, --Usually a string, but can be anything, as manners.help does not concern itself with presenting it. Having something with a good __tostring method is probably the best
-  name = "somename", --Optional. A name to portably identify `k`.
-  links_to = {[x1] = true, [x2] = true, ...}, --Optional. A set of objects whose documentation links to this object.
-  linked_from = {[y1] = true, [y2] = true}, --Optional. A set of objects that this object links to.
-}]], M.docset)
+local longdoc_mt = {}
+longdoc_mt.__index = longdoc_mt
+M.longdoc_mt = longdoc_mt
+do
+	local function deffer(name,key)
+		local f = function(self,value)
+			local doc = defget(M.docset,self.value,{})
+			doc[key] = value
+			return self
+		end
+		M.define(
+		longdoc_mt,name,
+		mname..".longdoc(v):"..name.."(d)\nSet "..key.." of `v`",
+		f)
+	end
+	deffer('name','name')
+	deffer('description','doc')
+end
+
+function longdoc_mt:see(...)
+	for _, other in ipairs(table.pack(...)) do
+		M.link(self.value,other)
+	end
+	return self
+end
+
+function longdoc_mt:done()
+	return self.value
+end
+
+function M.help(v)
+	local doc = M.docset[v]
+	return doc and doc.doc or nil
+end
 
 return M
